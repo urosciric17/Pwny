@@ -6,7 +6,6 @@
 #include <BluetoothSerial.h>
 //#include <memory>
 #include <array>
-#include <unordered_map>
 #include <Adafruit_PN532.h>
 #include <Wire.h>
 #include <cc1101.h>
@@ -43,7 +42,7 @@ enum class TokenNumRep: uint8_t {
 };
 
 
-typedef byte Uid[7];
+typedef byte Uid[4];
 typedef byte nfcKey[6];
 
 void __attribute__((noreturn)) halt(void)
@@ -172,13 +171,12 @@ constexpr uint16_t MAX_ANALOG_VAL=4095;
 constexpr uint64_t IR_REPEAT_CODE=0xFFFFFFFFFFFFFFFF;
 constexpr uint8_t MIFARE_CLASSIC_UID_LEN = 4;
 #if TESTING == 1
-Uid nfcUid={0,1,2,3,4,5,6};
+Uid nfcUid={0,1,2,3};
 #elif TESTING==0
 Uid nfcUid={0};
 #endif
-uint8_t nfcUidLen=0;
 uint32_t blockNum=0;
-
+uint8_t nfcUidLen;
 IRsend irsend(sendPin);  // Set the GPIO to be used to sending the message.
 IRrecv irrecv(recvPin);
 decode_results results;
@@ -223,15 +221,9 @@ inline void buildMsg(char* msg,const uint8_t batteryLevel)
   snprintf(msg,MSG_MAX_LEN,"bat:%"PRIu8,batteryLevel);
 }
 
-inline void buildMsg(char* msg,const Uid uid,const uint8_t uidLen)
+inline void buildMsg(char* msg,const Uid uid)
 { 
-  constexpr uint8_t MIFARE_CLASSIC_UID_BYTE_NUM=4;
-  constexpr uint8_t MIFARE_ULTRALIGHT_UID_BYTE_NUM=7;
-
-  if(uidLen==MIFARE_CLASSIC_UID_BYTE_NUM)
     snprintf(msg,MSG_MAX_LEN,"nfc:%02x%02x%02x%02x",uid[0],uid[1],uid[2],uid[3]);
-  else if(uidLen==MIFARE_ULTRALIGHT_UID_BYTE_NUM)
-    snprintf(msg,MSG_MAX_LEN,"nfc:%02x%02x%02x%02x" "%02x%02x%02x",uid[0],uid[1],uid[2],uid[3],uid[4],uid[5],uid[6]);
 }
 
 inline void buildMsg(char* msg,const double frequency,const uint8_t mod)
@@ -285,7 +277,7 @@ inline byte calcBCC(Uid uid)
   return BCC;
 }
 
-bool nfcBruteForceAuth(Uid uid, uint8_t uidLen, uint32_t blockNum)
+bool nfcBruteForceAuth(Uid uid, uint32_t blockNum)
 {
   bool success=false;
   bool isKeyB=false;
@@ -294,7 +286,7 @@ bool nfcBruteForceAuth(Uid uid, uint8_t uidLen, uint32_t blockNum)
   {
     for(uint8_t j=0;j<commonKeysSize;j++)
     {
-      success=nfc.mifareclassic_AuthenticateBlock(uid,uidLen,blockNum,isKeyB,(byte*)commonKeys[j]);
+      success=nfc.mifareclassic_AuthenticateBlock(uid,MIFARE_CLASSIC_UID_LEN,blockNum,isKeyB,(byte*)commonKeys[j]);
       if(success)
         return true;
     }
@@ -303,7 +295,7 @@ bool nfcBruteForceAuth(Uid uid, uint8_t uidLen, uint32_t blockNum)
   return success;
 }
 
-int8_t hexCharToValue(char hexChar)
+int8_t hexCharToDec(char hexChar)
 {
   constexpr uint8_t decDigitAsciiOffset=48;
   constexpr uint8_t hexDigitAsciiOffset=55;
@@ -315,13 +307,13 @@ int8_t hexCharToValue(char hexChar)
   return ret;
 }
 
+
 void strToUid(const String& str, Uid uid)
 {
   uint8_t j=0;
   for(uint8_t i=0;i<str.length();i+=2)
   {
-    uid[j]=hexCharToValue(str[i])*16+hexCharToValue(str[i+1]);
-    j++;
+    uid[j++]=hexCharToDec(str[i])*16+hexCharToDec(str[i+1]);
   }
 }
 
@@ -421,7 +413,7 @@ void loop() {
             {
               Serial.println(F("Capturing the nfc signal..."));
               #if TESTING == 1
-              buildMsg(msgToSend,nfcUid,7);
+              buildMsg(msgToSend,nfcUid);
               BT.write(msgToSend);
               #endif
               bool reading=true;
@@ -430,8 +422,15 @@ void loop() {
                 bool uidReadSuccess = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, nfcUid, &nfcUidLen,50);
                 if(uidReadSuccess)
                 {
-                  buildMsg(msgToSend,nfcUid,nfcUidLen);
-                  BT.write(msgToSend);
+                  if(nfcUidLen!=MIFARE_CLASSIC_UID_LEN)
+                  {
+                    Serial.println("Not a MIFARE classic tag!");
+                  }
+                  else
+                  {
+                    buildMsg(msgToSend,nfcUid);
+                    BT.write(msgToSend);
+                  }
                   reading=false;
                 }
                 if (BT.available() && BT.read()=='c')
@@ -470,11 +469,11 @@ void loop() {
               case Mode::NFC:
               {
                 //logic here
-                bool success = nfcBruteForceAuth(nfcUid,nfcUidLen,blockNum);
+                bool success = nfcBruteForceAuth(nfcUid,blockNum);
                 if(success)
                 {
                   strToUid(tokens[2],nfcUid);
-                  memcpy(blockData,nfcUid,4);
+                  memcpy(blockData,nfcUid,MIFARE_CLASSIC_UID_LEN);
                   blockData[4]=calcBCC(nfcUid);
                   success=nfc.mifareclassic_WriteDataBlock(blockNum,blockData);
                 }
