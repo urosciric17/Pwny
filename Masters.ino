@@ -10,6 +10,7 @@
 #include <Wire.h>
 #include <cc1101.h>
 #include <inttypes.h>
+#include <ctype.h>
 
 #define PN532_IRQ   (2)
 #define PN532_RESET (3)
@@ -300,6 +301,7 @@ int8_t hexCharToDec(char hexChar)
   constexpr uint8_t decDigitAsciiOffset=48;
   constexpr uint8_t hexDigitAsciiOffset=55;
   int8_t ret=-1; // indicates that hex char wasnt an appropriate value
+  hexChar=toupper(hexChar);
   if(hexChar <= '9' && hexChar >= '0')
     ret=hexChar-decDigitAsciiOffset;
   else if(hexChar<='F' && hexChar >= 'A')
@@ -308,13 +310,21 @@ int8_t hexCharToDec(char hexChar)
 }
 
 
-void strToUid(const String& str, Uid uid)
+bool strToUid(const String& str, Uid uid)
 {
   uint8_t j=0;
-  for(uint8_t i=0;i<str.length();i+=2)
+  uint32_t strLen=str.length();
+  if(strLen!=8)
+    return false;
+  for(uint8_t i=0;i<strLen;i+=2)
   {
-    uid[j++]=hexCharToDec(str[i])*16+hexCharToDec(str[i+1]);
+    int8_t firstChar=hexCharToDec(str[i]);
+    int8_t secondChar=hexCharToDec(str[i+1]);
+    if(firstChar==-1 || secondChar==-1)
+      return false;
+    uid[j++]=(uint8_t)((firstChar<<4)|secondChar);
   }
+  return true;
 }
 
 void setup() {
