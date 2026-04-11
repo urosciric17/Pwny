@@ -18,7 +18,7 @@
 #define skip() goto beginning
 #define TESTING 1
 
-enum class DbgCode : uint8_t{
+enum class LogCode : uint8_t{
   IR_CAP_START,
   IR_CAP_FAIL,
   IR_CAP_SUCCESS,
@@ -36,6 +36,7 @@ enum class DbgCode : uint8_t{
   SUBGHZ_SEND_FAIL,
   SUBGHZ_SEND_SUCCESS
 };
+
 
 enum class Mode: uint8_t {
   IR,
@@ -77,48 +78,6 @@ void __attribute__((noreturn)) halt(void)
   SUB_GHZ
 };*/
 
-class IRSignal
-{
-  public:
-  decode_type_t prot;
-  uint64_t code;
-  int nbits;
-  IRSignal(){}
-  void set(decode_type_t type,uint64_t val,uint16_t bits)
-  {
-    prot=type;
-    code=val;
-    nbits=bits;
-  } 
-};
-
-class BTHelper:public BluetoothSerial {
-  private:
-    SemaphoreHandle_t mutex;
-  public:
-    BTHelper()
-    {
-      mutex=xSemaphoreCreateMutex();    
-    }
-    void write(const char* msg)
-    {
-      size_t msgLen = strlen(msg);
-      xSemaphoreTake(mutex,portMAX_DELAY);
-      BluetoothSerial::write(msgLen);
-      BluetoothSerial::write((const uint8_t*)msg,msgLen);
-      xSemaphoreGive(mutex); 
-    }
-    void empty()
-    {
-      while(BluetoothSerial::available())
-        BluetoothSerial::read();
-    }
-    ~BTHelper()
-    {
-      vSemaphoreDelete(mutex);
-    }
-    
-};
 
 constexpr nfcKey commonKeys[] = {
     {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
@@ -172,10 +131,7 @@ constexpr nfcKey commonKeys[] = {
     {0x43, 0xAB, 0x19, 0xEF, 0x5C, 0x31},
     {0xA0, 0x53, 0xA2, 0x92, 0xA4, 0xAF},
 };
-BTHelper BT;
-State state;
-IRSignal irSignal;
-Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET,&Wire);
+
 constexpr uint8_t sendPin = 13;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
 constexpr uint8_t recvPin = 14;
 constexpr uint8_t batPin = 36;
@@ -196,8 +152,6 @@ Uid nfcUid={0};
 #endif
 uint32_t blockNum=0;
 uint8_t nfcUidLen;
-IRsend irsend(sendPin);  // Set the GPIO to be used to sending the message.
-IRrecv irrecv(recvPin);
 decode_results results;
 std::array<String,10> tokens;
 //String modeString;
@@ -216,6 +170,63 @@ constexpr uint8_t batMaxPerc=100;
 
 byte blockData[16]={0x01};
 char msgToSend[MSG_MAX_LEN];
+
+class IRSignal
+{
+  public:
+  decode_type_t prot;
+  uint64_t code;
+  int nbits;
+  IRSignal(){}
+  void set(decode_type_t type,uint64_t val,uint16_t bits)
+  {
+    prot=type;
+    code=val;
+    nbits=bits;
+  } 
+};
+
+class BTHelper:public BluetoothSerial {
+  private:
+    SemaphoreHandle_t mutex;
+    static constexpr uint8_t LOG_MAX_LEN=10;
+  public:
+    BTHelper()
+    {
+      mutex=xSemaphoreCreateMutex();    
+    }
+    void write(const char* msg)
+    {
+      size_t msgLen = strlen(msg);
+      xSemaphoreTake(mutex,portMAX_DELAY);
+      BluetoothSerial::write(msgLen);
+      BluetoothSerial::write((const uint8_t*)msg,msgLen);
+      xSemaphoreGive(mutex); 
+    }
+    void log(LogCode code)
+    {
+      buildMsg(msgToSend,LOG_MAX_LEN,code);
+      write(msgToSend);
+    }
+    void empty()
+    {
+      while(BluetoothSerial::available())
+        BluetoothSerial::read();
+    }
+    ~BTHelper()
+    {
+      vSemaphoreDelete(mutex);
+    }
+    
+};
+
+
+BTHelper BT;
+State state;
+IRSignal irSignal;
+Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET,&Wire);
+IRsend irsend(sendPin);  // Set the GPIO to be used to sending the message.
+IRrecv irrecv(recvPin);
 
 Mode determineMode(const String& modeString)
 {
@@ -248,6 +259,11 @@ inline void buildMsg(char* msg,const Uid uid)
 inline void buildMsg(char* msg,const double frequency)
 {
   snprintf(msg,MSG_MAX_LEN,"ghz:%"PRIu32":%"PRIu8,(uint32_t)(frequency*100.0));
+}
+
+inline void buildMsg(char* msg,size_t msgLen,LogCode code)
+{
+  snprintf(msg,msgLen,"log:%"PRIu8,code);
 }
 
 inline void changeBlockUid(Uid newUid,byte* outBlockData,uint32_t blockNum)
@@ -349,6 +365,7 @@ bool hexStrToUid(const String& str, Uid uid)
   }
   return true;
 }
+
 
 void setup() {
   // put your setup code here, to run once:
