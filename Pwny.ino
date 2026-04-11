@@ -18,6 +18,25 @@
 #define skip() goto beginning
 #define TESTING 1
 
+enum class DbgCode : uint8_t{
+  IR_CAP_START,
+  IR_CAP_FAIL,
+  IR_CAP_SUCCESS,
+  IR_SEND_FAIL,
+  IR_SEND_SUCCESS,
+  NFC_CAP_START,
+  NFC_CAP_FAIL,
+  NFC_INV_UID,
+  NFC_AUTH_FAIL,
+  NFC_READ_FAIL,
+  NFC_WRITE_FAIL,
+  SUBGHZ_CAP_START,
+  SUBGHZ_CAP_FAIL,
+  SUBGHZ_CAP_SUCCESS,
+  SUBGHZ_SEND_FAIL,
+  SUBGHZ_SEND_SUCCESS
+};
+
 enum class Mode: uint8_t {
   IR,
   NFC,
@@ -41,7 +60,6 @@ enum class TokenNumRep: uint8_t {
   NFC=3,
   SUB_GHZ=3
 };
-
 
 typedef byte Uid[4];
 typedef byte nfcKey[6];
@@ -227,11 +245,16 @@ inline void buildMsg(char* msg,const Uid uid)
     snprintf(msg,MSG_MAX_LEN,"nfc:%02x%02x%02x%02x",uid[0],uid[1],uid[2],uid[3]);
 }
 
-inline void buildMsg(char* msg,const double frequency,const uint8_t mod)
+inline void buildMsg(char* msg,const double frequency)
 {
-  snprintf(msg,MSG_MAX_LEN,"ghz:%"PRIu32":%"PRIu8,(uint32_t)(frequency*100.0),mod);
+  snprintf(msg,MSG_MAX_LEN,"ghz:%"PRIu32":%"PRIu8,(uint32_t)(frequency*100.0));
 }
 
+inline void changeBlockUid(Uid newUid,byte* outBlockData,uint32_t blockNum)
+{
+  memcpy(outBlockData,nfcUid,MIFARE_CLASSIC_UID_LEN);
+  outBlockData[4]=calcBCC(nfcUid);
+}
 
 uint8_t stringSplit(String str,const String delimiter,std::array<String, 10>& tokens)
 {
@@ -349,7 +372,9 @@ void loop() {
   //BT.readString().toCharArray(msg,MSG_MAX_LEN);
   //if(!splitString(msg,":",tokens))
     String recdMsg=BT.readStringUntil('\n');
+    #if TESTING == 1
     Serial.println(recdMsg);
+    #endif
     if(recdMsg=="bat")
     {
       getAndSendBatLvl();
@@ -460,7 +485,7 @@ void loop() {
             {
               Serial.println(F("Capturing the sub ghz signal..."));
               #if TESTING == 1
-              buildMsg(msgToSend,433.92,1);
+              buildMsg(msgToSend,433.92);
               BT.write(msgToSend);
               #endif
               //logic here
@@ -495,46 +520,29 @@ void loop() {
                   BT.write("dbg:Invalid NFC code");
                   break;
                 }
-                bool success = nfcBruteForceAuth(nfcUid,blockNum);
-                if(success)
-                {
-                  success=nfc.mifareclassic_ReadDataBlock(blockNum,blockData);
-                  Serial.println(F("NFC auth success"));
-                  BT.write("dbg:NFC auth success");
+                if (!nfcBruteForceAuth(nfcUid, blockNum)) {
+                    Serial.println(F("NFC auth failure"));
+                    BT.write("dbg:NFC auth failure");
+                    break; 
                 }
-                else 
-                {
-                  Serial.println(F("NFC auth failure"));
-                  BT.write("dbg:NFC auth failure");
-                  break;
-                }
-                  if(success)
-                  {
-                    Serial.println(F("NFC read success"));
-                    BT.write("dbg:NFC read success");                    
-                    memcpy(blockData,nfcUid,MIFARE_CLASSIC_UID_LEN);
-                    blockData[4]=calcBCC(nfcUid);
-                    success=nfc.mifareclassic_WriteDataBlock(blockNum,blockData);
-                  }
-                  else 
-                  {
+
+                if (!nfc.mifareclassic_ReadDataBlock(blockNum, blockData)) {
                     Serial.println(F("NFC read failure"));
                     BT.write("dbg:NFC read failure");
                     break;
-                  }
-                  if(success)
-                  {
-                    Serial.println(F("NFC write success"));
-                    BT.write("dbg:NFC write success");
-                  }
-                  else
-                  {
+                }
+
+                changeBlockUid(nfcUid, blockData, blockNum);
+                if (!nfc.mifareclassic_WriteDataBlock(blockNum, blockData)) {
                     Serial.println(F("NFC write failure"));
                     BT.write("dbg:NFC write failure");
-                  }
-                  break;
+                    break;
                 }
-              //}
+
+                Serial.println(F("NFC write success"));
+                BT.write("dbg:NFC write success");
+                break;
+              }
               case Mode::SUB_GHZ:
               {
                 //logic here
