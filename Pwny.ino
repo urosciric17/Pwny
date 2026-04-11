@@ -310,7 +310,7 @@ int8_t hexCharToDec(char hexChar)
 }
 
 
-bool strToUid(const String& str, Uid uid)
+bool hexStrToUid(const String& str, Uid uid)
 {
   uint8_t j=0;
   uint32_t strLen=str.length();
@@ -388,6 +388,7 @@ void loop() {
           switch(mode)
           {
             case Mode::IR:
+            {
               irrecv.resume();  // Receive the next value
               Serial.println(F("Capturing the ir signal..."));
               again:
@@ -419,6 +420,7 @@ void loop() {
                 goto again;
               }
               break;
+            }
             case Mode::NFC:
             {
               Serial.println(F("Capturing the nfc signal..."));
@@ -471,26 +473,68 @@ void loop() {
           {
             case Mode::IR:
             {          
-              irsend.send((decode_type_t)atoi(tokens[2].c_str()),strtoull(tokens[3].c_str(),NULL,10),(uint16_t)strtoul(tokens[4].c_str(),NULL,10));
-              Serial.println(F("Sent the ir signal!"));
-              BT.write("dbg:Sent the nfc signal");
+              if(irsend.send((decode_type_t)atoi(tokens[2].c_str()),strtoull(tokens[3].c_str(),NULL,10),(uint16_t)strtoul(tokens[4].c_str(),NULL,10)))
+              {
+                Serial.println(F("Sent the ir signal!"));
+                BT.write("dbg:Sent the ir signal");
+              }
+              else
+              {
+                Serial.println(F("Failed sending the ir signal!"));
+                BT.write("dbg:Failed sending the ir signal");
+              }
               break;
             }
               case Mode::NFC:
               {
                 //logic here
+                bool isNfcCodeValid=hexStrToUid(tokens[2],nfcUid);
+                if(!isNfcCodeValid)
+                {
+                  Serial.println(F("Invalid NFC code"));
+                  BT.write("dbg:Invalid NFC code");
+                  break;
+                }
                 bool success = nfcBruteForceAuth(nfcUid,blockNum);
                 if(success)
                 {
-                  strToUid(tokens[2],nfcUid);
-                  memcpy(blockData,nfcUid,MIFARE_CLASSIC_UID_LEN);
-                  blockData[4]=calcBCC(nfcUid);
-                  success=nfc.mifareclassic_WriteDataBlock(blockNum,blockData);
+                  success=nfc.mifareclassic_ReadDataBlock(blockNum,blockData);
+                  Serial.println(F("NFC auth success"));
+                  BT.write("dbg:NFC auth success");
                 }
-                Serial.println(F("Sent the nfc signal"));
-                BT.write("dbg:Sent the nfc signal");
-                break;
-              }
+                else 
+                {
+                  Serial.println(F("NFC auth failure"));
+                  BT.write("dbg:NFC auth failure");
+                  break;
+                }
+                  if(success)
+                  {
+                    Serial.println(F("NFC read success"));
+                    BT.write("dbg:NFC read success");                    
+                    memcpy(blockData,nfcUid,MIFARE_CLASSIC_UID_LEN);
+                    blockData[4]=calcBCC(nfcUid);
+                    success=nfc.mifareclassic_WriteDataBlock(blockNum,blockData);
+                  }
+                  else 
+                  {
+                    Serial.println(F("NFC read failure"));
+                    BT.write("dbg:NFC read failure");
+                    break;
+                  }
+                  if(success)
+                  {
+                    Serial.println(F("NFC write success"));
+                    BT.write("dbg:NFC write success");
+                  }
+                  else
+                  {
+                    Serial.println(F("NFC write failure"));
+                    BT.write("dbg:NFC write failure");
+                  }
+                  break;
+                }
+              //}
               case Mode::SUB_GHZ:
               {
                 //logic here
@@ -499,7 +543,6 @@ void loop() {
                 break;
               }
           }
-          //BT.write("dbg:Sent");
           break;
         case State::UNREC:
           Serial.println(F("Error: Unrecognized command..."));
