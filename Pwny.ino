@@ -24,19 +24,19 @@ enum class LogCode : uint8_t{
   IR_CAP_SUCCESS,
   IR_SEND_FAIL,
   IR_SEND_SUCCESS,
-  NFC_CAP_START,
-  NFC_CAP_FAIL,
   NFC_INV_UID,
-  NFC_AUTH_FAIL,
+  NFC_READ_START,
   NFC_READ_FAIL,
+  NFC_READ_SUCCESS,
+  NFC_AUTH_FAIL,
   NFC_WRITE_FAIL,
+  NFC_WRITE_SUCCESS,
   SUBGHZ_CAP_START,
   SUBGHZ_CAP_FAIL,
   SUBGHZ_CAP_SUCCESS,
   SUBGHZ_SEND_FAIL,
   SUBGHZ_SEND_SUCCESS
 };
-
 
 enum class Mode: uint8_t {
   IR,
@@ -366,6 +366,13 @@ bool hexStrToUid(const String& str, Uid uid)
   return true;
 }
 
+void printPN532Version(uint32_t versiondata)
+{
+  Serial.print("Found chip PN5"); Serial.println((versiondata>>24) & 0xFF, HEX);
+  Serial.print("Firmware ver. "); Serial.print((versiondata>>16) & 0xFF, DEC);
+  Serial.print('.'); 
+  Serial.println((versiondata>>8) & 0xFF, DEC);
+}
 
 void setup() {
   // put your setup code here, to run once:
@@ -375,6 +382,15 @@ void setup() {
   irrecv.enableIRIn();  // Start the receiver
   irsend.begin();
   irrecv.pause();
+  nfc.begin();
+  uint32_t versiondata = nfc.getFirmwareVersion();
+  if (! versiondata) 
+  {
+    Serial.print("Didn't find PN532 board");
+    halt();
+  }
+  else
+    printPN532Version(versiondata);
   Serial.begin(115200);
   //nfc.begin();
   TimerHandle_t batteryTimer=xTimerCreate("Battery", pdMS_TO_TICKS(BAT_LVL_PERIOD_MS), pdTRUE, 0, batteryTimerCallback);
