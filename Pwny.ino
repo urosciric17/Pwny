@@ -16,7 +16,7 @@
 #define PN532_RESET (3)
 #define ASSERT_BOUNDS(INDEX,SIZE) if (INDEX<0 || INDEX>=SIZE) return false;
 #define skip() goto beginning
-#define TESTING 1
+#define TESTING 0
 
 enum class LogCode : uint8_t{
   IR_CAP_START,
@@ -70,14 +70,11 @@ void __attribute__((noreturn)) halt(void)
   while(1);
 }
 
-
-
 /*enum class Signal{
   IR,
   NFC,
   SUB_GHZ
 };*/
-
 
 constexpr nfcKey commonKeys[] = {
     {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
@@ -132,8 +129,8 @@ constexpr nfcKey commonKeys[] = {
     {0xA0, 0x53, 0xA2, 0x92, 0xA4, 0xAF},
 };
 
-constexpr uint8_t sendPin = 13;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
-constexpr uint8_t recvPin = 14;
+constexpr uint8_t sendPin = 32;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
+constexpr uint8_t recvPin = 35;
 constexpr uint8_t batPin = 36;
 constexpr uint8_t LOOP_TASK_PRIORITY = 1;
 constexpr uint16_t BAT_LVL_PERIOD_MS = 30000;
@@ -416,7 +413,7 @@ void loop() {
     else if((tokenNum=stringSplit(recdMsg,":",tokens))<2)
     {
       Serial.println(F("Wrong format, try again!"));
-      BT.write("dbg:Wrong message format");
+      //BT.write("dbg:Wrong message format");
       BT.empty();
       //goto beginning;
     }
@@ -455,8 +452,7 @@ void loop() {
                 if (BT.available() && BT.read()=='c')
                 {
                   BT.empty();
-                  BT.write("dbg:Cancelled IR capture");
-                  //BT.println("Capture cancelled!");
+                  //BT.write("dbg:Cancelled IR capture");
                   goto beginning;
                 }
               } 
@@ -534,12 +530,12 @@ void loop() {
               if(irsend.send((decode_type_t)atoi(tokens[2].c_str()),strtoull(tokens[3].c_str(),NULL,10),(uint16_t)strtoul(tokens[4].c_str(),NULL,10)))
               {
                 Serial.println(F("Sent the ir signal!"));
-                BT.write("dbg:Sent the ir signal");
+                BT.log(LogCode::IR_SEND_SUCCESS);
               }
               else
               {
                 Serial.println(F("Failed sending the ir signal!"));
-                BT.write("dbg:Failed sending the ir signal");
+                BT.log(LogCode::IR_SEND_FAIL);
               }
               break;
             }
@@ -550,44 +546,44 @@ void loop() {
                 if(!isNfcCodeValid)
                 {
                   Serial.println(F("Invalid NFC code"));
-                  BT.write("dbg:Invalid NFC code");
+                  BT.log(LogCode::NFC_INV_UID);
                   break;
                 }
                 if (!nfcBruteForceAuth(nfcUid, blockNum)) {
                     Serial.println(F("NFC auth failure"));
-                    BT.write("dbg:NFC auth failure");
+                    BT.log(LogCode::NFC_AUTH_FAIL);
                     break; 
                 }
 
                 if (!nfc.mifareclassic_ReadDataBlock(blockNum, blockData)) {
                     Serial.println(F("NFC read failure"));
-                    BT.write("dbg:NFC read failure");
+                    BT.log(LogCode::NFC_READ_FAIL);
                     break;
                 }
 
                 changeBlockUid(nfcUid, blockData, blockNum);
                 if (!nfc.mifareclassic_WriteDataBlock(blockNum, blockData)) {
                     Serial.println(F("NFC write failure"));
-                    BT.write("dbg:NFC write failure");
+                    BT.log(LogCode::NFC_WRITE_FAIL);
                     break;
                 }
 
                 Serial.println(F("NFC write success"));
-                BT.write("dbg:NFC write success");
+                BT.log(LogCode::NFC_WRITE_SUCCESS);
                 break;
               }
               case Mode::SUB_GHZ:
               {
                 //logic here
                 Serial.println(F("Sent the sub ghz signal"));
-                BT.write("dbg:Sent the sub ghz signal");
+                //BT.write("dbg:Sent the sub ghz signal");
                 break;
               }
           }
           break;
         case State::UNREC:
           Serial.println(F("Error: Unrecognized command..."));
-          BT.write("dbg:Unrecognized command");
+          //BT.write("dbg:Unrecognized command");
           BT.empty();
           break;
       }
