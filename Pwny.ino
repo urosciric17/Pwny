@@ -4,7 +4,6 @@
 #include <IRutils.h>
 #include <IRsend.h>
 #include <BluetoothSerial.h>
-//#include <memory>
 #include <array>
 #include <Adafruit_PN532.h>
 #include <Wire.h>
@@ -13,7 +12,7 @@
 #include <ctype.h>
 
 #define PN532_IRQ (2)
-#define PN532_RESET (3)
+#define PN532_RESET (2) //was 3
 #define ASSERT_BOUNDS(INDEX, SIZE) \
   if (INDEX < 0 || INDEX >= SIZE) return false;
 #define skip() goto beginning
@@ -148,6 +147,7 @@ constexpr uint8_t REP_NUM_TOKENS = 5;
 constexpr uint16_t MAX_ANALOG_VAL = 4095;
 constexpr uint64_t IR_REPEAT_CODE = 0xFFFFFFFFFFFFFFFF;
 constexpr uint8_t MIFARE_CLASSIC_UID_LEN = 4;
+constexpr uint8_t NFC_READ_TIMEOUT_MS = 50;
 #if TESTING == 1
 Uid nfcUid = { 0, 1, 2, 3 };
 #elif TESTING == 0
@@ -219,7 +219,8 @@ public:
 BTHelper BT;
 State state;
 IRSignal irSignal;
-Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET, &Wire);
+//Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET, &Wire);
+Adafruit_PN532 nfc(PN532_RESET,&Serial2);
 IRsend irsend(sendPin);  // Set the GPIO to be used to sending the message.
 IRrecv irrecv(recvPin);
 
@@ -361,6 +362,8 @@ void setup() {
   irrecv.enableIRIn();  // Start the receiver
   irsend.begin();
   irrecv.pause();
+  Serial2.begin(115200, SERIAL_8N1, 16, 17);
+  while(!Serial2);
   nfc.begin();
   uint32_t versiondata = nfc.getFirmwareVersion();
   if (!versiondata) {
@@ -415,6 +418,7 @@ beginning:
                   if (BT.available() && BT.read() == 'c') {
                     BT.empty();
                     //BT.write("dbg:Cancelled IR capture");
+                    BT.log(LogCode::IR_CAP_CANCEL);
                     goto beginning;
                   }
                 }
@@ -444,7 +448,7 @@ beginning:
                 #endif
                 bool reading = true;
                 while (reading) {
-                  bool uidReadSuccess = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, nfcUid, &nfcUidLen, 50);
+                  bool uidReadSuccess = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, nfcUid, &nfcUidLen, NFC_READ_TIMEOUT_MS);
                   if (uidReadSuccess) {
                     if (nfcUidLen != MIFARE_CLASSIC_UID_LEN) {
                       Serial.println("Not a MIFARE classic tag!");
@@ -452,6 +456,7 @@ beginning:
                     } else {
                       buildMsg(msgToSend, nfcUid);
                       BT.write(msgToSend);
+                      BT.log(LogCode::NFC_READ_SUCCESS);
                     }
                     reading = false;
                   }
