@@ -20,6 +20,7 @@
 #define TESTING 0
 
 enum class LogCode : uint8_t {
+  IR_UNKNOWN_CODE,
   IR_CAP_START,
   IR_CAP_FAIL,
   IR_CAP_SUCCESS,
@@ -353,6 +354,7 @@ void printPN532Version(uint32_t versiondata) {
 
 void setup() {
   // put your setup code here, to run once:
+  Serial.begin(115200);
   BT.begin("Pwny");
   BT.enableSSP();
   BT.setTimeout(1500);
@@ -366,7 +368,6 @@ void setup() {
     halt();
   } else
     printPN532Version(versiondata);
-  Serial.begin(115200);
   //nfc.begin();
   TimerHandle_t batteryTimer = xTimerCreate("Battery", pdMS_TO_TICKS(BAT_LVL_PERIOD_MS), pdTRUE, 0, batteryTimerCallback);
   xTimerStart(batteryTimer, 0);
@@ -379,9 +380,7 @@ beginning:
     //BT.readString().toCharArray(msg,MSG_MAX_LEN);
     //if(!splitString(msg,":",tokens))
     String recdMsg = BT.readStringUntil('\n');
-#if TESTING == 1
     Serial.println(recdMsg);
-#endif
     if (recdMsg == "bat") {
       getAndSendBatLvl();
       //goto beginning;
@@ -411,7 +410,7 @@ beginning:
                 irrecv.resume();  // Receive the next value
                 Serial.println(F("Capturing the ir signal..."));
                 BT.log(LogCode::IR_CAP_START);
-again:
+                again:
                 while (!irrecv.decode(&results)) {
                   if (BT.available() && BT.read() == 'c') {
                     BT.empty();
@@ -426,9 +425,10 @@ again:
                 if (results.decode_type != UNKNOWN) {
                   buildMsg(msgToSend, results);
                   BT.write(msgToSend);
+                  BT.log(LogCode::IR_CAP_SUCCESS);
                 } else {
                   Serial.println("ir:unknown code");
-                  BT.write("dbg:Unknown ir code");
+                  BT.log(LogCode::IR_UNKNOWN_CODE);
                   irrecv.resume();
                   goto again;
                 }
