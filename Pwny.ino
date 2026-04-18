@@ -9,9 +9,8 @@
 #include <Wire.h>
 #include <cc1101.h>
 #include <inttypes.h>
-#include <ctype.h>
+//#include <ctype.h>
 
-#define PN532_IRQ (2)
 #define PN532_RESET (2) //was 3
 #define ASSERT_BOUNDS(INDEX, SIZE) \
   if (INDEX < 0 || INDEX >= SIZE) return false;
@@ -245,7 +244,7 @@ inline void buildMsg(char* msg, const uint8_t batteryLevel) {
 }
 
 inline void buildMsg(char* msg, const Uid uid) {
-  snprintf(msg, MSG_MAX_LEN, "nfc:%02x%02x%02x%02x", uid[0], uid[1], uid[2], uid[3]);
+  snprintf(msg, MSG_MAX_LEN, "nfc:%02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3]);
 }
 
 inline void buildMsg(char* msg, const double frequency) {
@@ -257,8 +256,8 @@ inline void buildMsg(char* msg, size_t msgLen, LogCode code) {
 }
 
 inline void changeBlockUid(Uid newUid, byte* outBlockData, uint32_t blockNum) {
-  memcpy(outBlockData, nfcUid, MIFARE_CLASSIC_UID_LEN);
-  outBlockData[4] = calcBCC(nfcUid);
+  memcpy(outBlockData, newUid, MIFARE_CLASSIC_UID_LEN);
+  outBlockData[4] = calcBCC(newUid);
 }
 
 uint8_t stringSplit(String str, const String delimiter, std::array<String, 10>& tokens) {
@@ -320,7 +319,7 @@ int8_t hexCharToDec(char hexChar) {
   constexpr uint8_t decDigitAsciiOffset = 48;
   constexpr uint8_t hexDigitAsciiOffset = 55;
   int8_t ret = -1;  // indicates that hex char wasnt an appropriate value
-  hexChar = toupper(hexChar);
+  //hexChar = toupper(hexChar);
   if (hexChar <= '9' && hexChar >= '0')
     ret = hexChar - decDigitAsciiOffset;
   else if (hexChar <= 'F' && hexChar >= 'A')
@@ -500,23 +499,26 @@ beginning:
               {
                 //logic here
                 bool isNfcCodeValid = hexStrToUid(tokens[2], nfcUid);
+                for(uint8_t i=0;i<MIFARE_CLASSIC_UID_LEN;i++)
+                  Serial.print(nfcUid[i],HEX);
+                Serial.println();
                 if (!isNfcCodeValid) {
                   Serial.println(F("Invalid NFC code"));
                   BT.log(LogCode::NFC_INV_UID);
                   break;
                 }
+                if(!nfc.inListPassiveTarget())
+                  break;
                 if (!nfcBruteForceAuth(nfcUid, blockNum)) {
                   Serial.println(F("NFC auth failure"));
                   BT.log(LogCode::NFC_AUTH_FAIL);
                   break;
                 }
-
                 if (!nfc.mifareclassic_ReadDataBlock(blockNum, blockData)) {
                   Serial.println(F("NFC read failure"));
                   BT.log(LogCode::NFC_READ_FAIL);
                   break;
                 }
-
                 changeBlockUid(nfcUid, blockData, blockNum);
                 if (!nfc.mifareclassic_WriteDataBlock(blockNum, blockData)) {
                   Serial.println(F("NFC write failure"));
