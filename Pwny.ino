@@ -7,14 +7,19 @@
 #include <array>
 #include <Adafruit_PN532.h>
 #include <Wire.h>
-#include <cc1101.h>
 #include <inttypes.h>
+#include <RadioLib.h>
+#include "driver/rmt.h"
+#include "esp_err.h"
 //#include <ctype.h>
 
 #define PN532_RESET (2) //was 3
 #define ASSERT_BOUNDS(INDEX, SIZE) \
   if (INDEX < 0 || INDEX >= SIZE) return false;
 #define skip() goto beginning
+#define CS_PIN 15
+#define IRQ_PIN 26
+#define IRQ2_PIN 27
 #define TESTING 0
 
 enum class LogCode : uint8_t {
@@ -70,8 +75,7 @@ typedef byte Uid[4];
 typedef byte nfcKey[6];
 
 void __attribute__((noreturn)) halt(void) {
-  while (1)
-    ;
+  while (1);
 }
 
 /*enum class Signal{
@@ -80,7 +84,7 @@ void __attribute__((noreturn)) halt(void) {
   SUB_GHZ
 };*/
 
-constexpr nfcKey commonKeys[] = {
+nfcKey commonKeys[] = {
   { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
   { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5 },
   { 0xD3, 0xF7, 0xD3, 0xF7, 0xD3, 0xF7 },
@@ -131,6 +135,28 @@ constexpr nfcKey commonKeys[] = {
   { 0x99, 0xC6, 0x36, 0x33, 0x44, 0x33 },
   { 0x43, 0xAB, 0x19, 0xEF, 0x5C, 0x31 },
   { 0xA0, 0x53, 0xA2, 0x92, 0xA4, 0xAF },
+};
+
+rmt_item32_t slow_blink[] = {
+    // 8 items of pure HIGH (16 phases of 31250us = 500,000us)
+    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
+    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
+    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
+    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
+    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
+    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
+    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
+    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
+    
+    // 8 items of pure LOW
+    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
+    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
+    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
+    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
+    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
+    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
+    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
+    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}}
 };
 
 constexpr uint8_t sendPin = 32;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
@@ -222,6 +248,8 @@ IRSignal irSignal;
 Adafruit_PN532 nfc(PN532_RESET,&Serial2);
 IRsend irsend(sendPin);  // Set the GPIO to be used to sending the message.
 IRrecv irrecv(recvPin);
+SPIClass hspi(HSPI);
+CC1101 radio = new Module(CS_PIN, IRQ_PIN, RADIOLIB_NC,IRQ2_PIN,hspi);
 
 Mode determineMode(const String& modeString) {
   Mode mode = Mode::INVALID;
@@ -258,6 +286,34 @@ inline void buildMsg(char* msg, size_t msgLen, LogCode code) {
 inline void changeBlockUid(Uid newUid, byte* outBlockData, uint32_t blockNum) {
   memcpy(outBlockData, newUid, MIFARE_CLASSIC_UID_LEN);
   outBlockData[4] = calcBCC(newUid);
+}
+
+void printState(const esp_err_t state,const char* msgSuccess,const char* msgFail)
+{
+  if(state==ESP_OK)
+  {
+    Serial.println(msgSuccess);
+  }
+  else
+  {
+    Serial.printf("%s:",msgFail);
+    Serial.println(esp_err_to_name(state));
+  }
+}
+
+void init_rmt(void)
+{
+  esp_err_t state;
+  constexpr size_t rx_buf_size_in_tx_mode=(size_t)0;
+  constexpr int default_flags=0;
+  rmt_config_t _rmt_config=RMT_DEFAULT_CONFIG_TX((gpio_num_t) IRQ_PIN, RMT_CHANNEL_0);
+  state=rmt_config(&_rmt_config);
+  printState(state,"Config success","Config fail");
+  assert(state==ESP_OK);
+  state=rmt_driver_install(RMT_CHANNEL_0,rx_buf_size_in_tx_mode, default_flags);
+  printState(state,"driver install success","driver install fail");
+  assert(state==ESP_OK);
+
 }
 
 uint8_t stringSplit(String str, const String delimiter, std::array<String, 10>& tokens) {
@@ -370,7 +426,17 @@ void setup() {
     halt();
   } else
     printPN532Version(versiondata);
-  //nfc.begin();
+    hspi.begin();
+  int status=radio.begin();
+  if(status==RADIOLIB_ERR_NONE)
+  {
+    Serial.println(F("CC1101 init success"));
+    Serial.print("Freq err code:");
+    Serial.println(radio.setFrequency(433.92)); // Change to 315.0 if in the US/China
+    Serial.print("Mod err code:");
+    Serial.println(radio.setOOK(true));
+  }
+    init_rmt();
   TimerHandle_t batteryTimer = xTimerCreate("Battery", pdMS_TO_TICKS(BAT_LVL_PERIOD_MS), pdTRUE, 0, batteryTimerCallback);
   xTimerStart(batteryTimer, 0);
 }
@@ -535,7 +601,12 @@ beginning:
                 //logic here
                 Serial.println(F("Sent the sub ghz signal"));
                 //BT.write("dbg:Sent the sub ghz signal");
-                BT.log(LogCode::SUBGHZ_SEND_SUCCESS);
+                esp_err_t state=rmt_write_items(RMT_CHANNEL_0,slow_blink,(sizeof(slow_blink)/sizeof(rmt_item32_t)),true);
+                printState(state,"Transmit success","Transmit failed");
+                if(state==ESP_OK)
+                  BT.log(LogCode::SUBGHZ_SEND_SUCCESS);
+                else
+                  BT.log(LogCode::SUBGHZ_SEND_FAIL);
                 break;
               }
           }
