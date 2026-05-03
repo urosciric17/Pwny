@@ -25,22 +25,24 @@
 enum class LogCode : uint8_t {
   IR_UNKNOWN_CODE,
   IR_CAP_START,
-  IR_CAP_FAIL,
   IR_CAP_SUCCESS,
   IR_CAP_CANCEL,
   IR_SEND_FAIL,
   IR_SEND_SUCCESS,
   NFC_INV_UID,
-  NFC_READ_START,
-  NFC_READ_FAIL,
-  NFC_READ_SUCCESS,
-  NFC_READ_CANCEL,
+  NFC_UID_READ_START,
+  NFC_UID_READ_SUCCESS,
+  NFC_UID_READ_CANCEL,
   NFC_NOT_MIFARE_CLASSIC,
+  NFC_TARGET_NOT_FOUND,
   NFC_AUTH_FAIL,
+  NFC_READ_FAIL,
+  NFC_WRITE_START,
   NFC_WRITE_FAIL,
   NFC_WRITE_SUCCESS,
+  NFC_WRITE_CANCEL,
   SUBGHZ_CAP_START,
-  SUBGHZ_CAP_FAIL,
+  SUBGHZ_CAP_CANCEL,
   SUBGHZ_CAP_SUCCESS,
   SUBGHZ_SEND_FAIL,
   SUBGHZ_SEND_SUCCESS,
@@ -356,15 +358,22 @@ inline byte calcBCC(Uid uid) {
   return BCC;
 }
 
-bool nfcBruteForceAuth(Uid uid, uint32_t blockNum) {
+bool nfcBruteForceAuth(Uid uid, uint32_t blockNum,bool& cancelled) {
+  cancelled=false;
   bool success = false;
   bool isKeyB = false;
   constexpr uint8_t commonKeysSize = sizeof(commonKeys) / sizeof(commonKeys[0]);
   for (uint8_t i = 0; i < 2; i++) {
     for (uint8_t j = 0; j < commonKeysSize; j++) {
+      Serial.printf("Trying key %hhu...\n",j);
       success = nfc.mifareclassic_AuthenticateBlock(uid, MIFARE_CLASSIC_UID_LEN, blockNum, isKeyB, (byte*)commonKeys[j]);
       if (success)
         return true;
+      if(BT.available() && BT.read()=='c')
+      {
+        cancelled=true;
+        return false;
+      }
     }
     isKeyB = true;
   }
@@ -423,7 +432,7 @@ void setup() {
   uint32_t versiondata = nfc.getFirmwareVersion();
   if (!versiondata) {
     Serial.print("Didn't find PN532 board");
-    halt();
+    //halt();
   } else
     printPN532Version(versiondata);
     hspi.begin();
@@ -435,6 +444,16 @@ void setup() {
     Serial.println(radio.setFrequency(433.92)); // Change to 315.0 if in the US/China
     Serial.print("Mod err code:");
     Serial.println(radio.setOOK(true));
+  }
+  status=radio.transmitDirectAsync();
+  if(status==RADIOLIB_ERR_NONE)
+  {
+    Serial.println(F("CC1101 transmit mode set!"));
+  }
+  else 
+  {
+    Serial.print(F("CC1101 transmit mode set failed:"));
+    Serial.println(status);
   }
     init_rmt();
   TimerHandle_t batteryTimer = xTimerCreate("Battery", pdMS_TO_TICKS(BAT_LVL_PERIOD_MS), pdTRUE, 0, batteryTimerCallback);
@@ -506,7 +525,7 @@ beginning:
             case Mode::NFC:
               {
                 Serial.println(F("Capturing the nfc signal..."));
-                BT.log(LogCode::NFC_READ_START);
+                BT.log(LogCode::NFC_UID_READ_START);
                 #if TESTING == 1
                 buildMsg(msgToSend, nfcUid);
                 BT.write(msgToSend);
@@ -521,7 +540,7 @@ beginning:
                     } else {
                       buildMsg(msgToSend, nfcUid);
                       BT.write(msgToSend);
-                      BT.log(LogCode::NFC_READ_SUCCESS);
+                      BT.log(LogCode::NFC_UID_READ_SUCCESS);
                     }
                     reading = false;
                   }
@@ -529,7 +548,7 @@ beginning:
                     reading = false;
                     if (!uidReadSuccess) {
                       Serial.println("UID read cancelled!");
-                      BT.log(LogCode::NFC_READ_CANCEL);
+                      BT.log(LogCode::NFC_UID_READ_CANCEL);
                     }
                   }
                 }
@@ -563,8 +582,9 @@ beginning:
               }
             case Mode::NFC:
               {
-                //logic here
                 bool isNfcCodeValid = hexStrToUid(tokens[2], nfcUid);
+                Uid dummyUid;
+                uint8_t dummyUidLen;
                 for(uint8_t i=0;i<MIFARE_CLASSIC_UID_LEN;i++)
                   Serial.print(nfcUid[i],HEX);
                 Serial.println();
@@ -573,13 +593,43 @@ beginning:
                   BT.log(LogCode::NFC_INV_UID);
                   break;
                 }
-                if(!nfc.inListPassiveTarget())
-                  break;
-                if (!nfcBruteForceAuth(nfcUid, blockNum)) {
-                  Serial.println(F("NFC auth failure"));
-                  BT.log(LogCode::NFC_AUTH_FAIL);
+                BT.log(LogCode::NFC_WRITE_START);
+                uint64_t startTime=millis();
+                bool targetInlisted=false;
+                while(!(targetInlisted=nfc.readPassiveTargetID(0, dummyUid, &dummyUidLen,100U)))
+                {
+                  if(BT.available() && BT.read()=='c')
+                    break;
+                }
+                if(!targetInlisted)
+                {
+                  Serial.println(F("NFC writing cancelled"));
+                  BT.log(LogCode::NFC_WRITE_CANCEL);
+                  nfc.SAMConfig();
                   break;
                 }
+                else{
+                  Serial.println("Target inlisted!");
+                }
+                bool authCancelled;
+                if (!nfcBruteForceAuth(dummyUid, blockNum,authCancelled)) {
+                  if(authCancelled)
+                  {
+                    Serial.println(F("NFC write cancelled"));
+                    BT.log(LogCode::NFC_WRITE_CANCEL);
+                  }
+                  else
+                  {
+                    Serial.println(F("NFC auth failure"));
+                    BT.log(LogCode::NFC_AUTH_FAIL);
+                  }
+                  break;
+                }
+                /*if(!nfc.inListPassiveTarget())
+                {
+                  Serial.println("NFC target not detected!");
+                  break;
+                }*/
                 if (!nfc.mifareclassic_ReadDataBlock(blockNum, blockData)) {
                   Serial.println(F("NFC read failure"));
                   BT.log(LogCode::NFC_READ_FAIL);
@@ -598,9 +648,8 @@ beginning:
               }
             case Mode::SUB_GHZ:
               {
-                //logic here
+                radio.setFrequency(atof(tokens[2].c_str()));
                 Serial.println(F("Sent the sub ghz signal"));
-                //BT.write("dbg:Sent the sub ghz signal");
                 esp_err_t state=rmt_write_items(RMT_CHANNEL_0,slow_blink,(sizeof(slow_blink)/sizeof(rmt_item32_t)),true);
                 printState(state,"Transmit success","Transmit failed");
                 if(state==ESP_OK)
