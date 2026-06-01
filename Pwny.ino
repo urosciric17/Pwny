@@ -198,6 +198,7 @@ constexpr uint16_t BAT_LVL_PERIOD_MS = 30000;
 constexpr uint8_t MAX_TOKENS = 5;
 constexpr uint16_t MAX_LVL_TIMES = 1000;
 constexpr uint16_t MAX_SUBGHZ_SIGNAL_SIZE = MAX_LVL_TIMES/2;
+constexpr uint16_t MAX_SUBGHZ_SIGNAL_STR_SIZE = MAX_SUBGHZ_SIGNAL_SIZE*4;
 constexpr uint8_t MAX_TOKEN_SIZE = 20;
 constexpr uint8_t MSG_MAX_LEN = 100;
 constexpr uint8_t CAP_NUM_TOKENS = 2;
@@ -277,10 +278,10 @@ public:
   }
 };
 
-
 BTHelper BT;
 State state;
 IRSignal irSignal;
+String subghzSignalStr; 
 //Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET, &Wire);
 Adafruit_PN532 nfc(PN532_RESET, &Serial2);
 IRsend irsend(sendPin);  // Set the GPIO to be used to sending the message.
@@ -371,6 +372,32 @@ bool fillSubghzSignalBuf(rmt_item32_t* signalToSendBuf,uint16_t signalSize,Strin
   }
   return true;
 }
+
+bool fillSubhzSignalStr(String& outSubghzStr,uint16_t strMaxSize,rmt_item32_t* signalToSendBuf,uint16_t signalSize)
+{
+  outSubghzStr.remove(0);
+  char durStr[10];
+  bool first=true;
+  for(uint16_t i=0;i<signalSize;i++)
+  {
+    if(first)
+    {
+      snprintf(durStr, sizeof(durStr), "%u", signalToSendBuf[i].duration0);
+      first=false;
+    }
+    else
+    {
+      snprintf(durStr, sizeof(durStr), "_%u", signalToSendBuf[i].duration0);
+    }
+    outSubghzStr+=durStr;
+    snprintf(durStr, sizeof(durStr), "_%u", signalToSendBuf[i].duration1);
+    outSubghzStr+=durStr;
+    if(outSubghzStr.length()>strMaxSize)
+      return false;
+  }
+  return true;
+}
+
 
 uint16_t stringSplit(String str, const String delimiter,String* tokens,uint16_t maxTokens) {
   int16_t index;
@@ -509,6 +536,7 @@ void setup() {
   initSubghzSignalBuf(signalToSendBuf);
   TimerHandle_t batteryTimer = xTimerCreate("Battery", pdMS_TO_TICKS(BAT_LVL_PERIOD_MS), pdTRUE, 0, batteryTimerCallback);
   xTimerStart(batteryTimer, 0);
+  subghzSignalStr.reserve(MAX_SUBGHZ_SIGNAL_STR_SIZE);
 }
 
 void loop() {
@@ -608,6 +636,13 @@ again:
 #if TESTING == 1
                 buildMsg(msgToSend, 433.92, "120_250_250_250");
                 BT.write(msgToSend);
+#else
+                uint16_t signalSize;
+                if(fillSubhzSignalStr(subghzSignalStr, MAX_SUBGHZ_SIGNAL_STR_SIZE, signalToSendBuf, signalSize))
+                {
+                  buildMsg(msgToSend,atof(tokens[2].c_str()),subghzSignalStr.c_str());
+                  BT.write(msgToSend);
+                }
 #endif
                 //logic here
                 break;
