@@ -4,7 +4,6 @@
 #include <IRutils.h>
 #include <IRsend.h>
 #include <BluetoothSerial.h>
-#include <array>
 #include <Adafruit_PN532.h>
 #include <Wire.h>
 #include <inttypes.h>
@@ -13,7 +12,7 @@
 #include "esp_err.h"
 //#include <ctype.h>
 
-#define PN532_RESET (2) //was 3
+#define PN532_RESET (2)  //was 3
 #define ASSERT_BOUNDS(INDEX, SIZE) \
   if (INDEX < 0 || INDEX >= SIZE) return false;
 #define skip() goto beginning
@@ -70,14 +69,15 @@ enum class TokenNumCap : uint8_t {
 enum class TokenNumRep : uint8_t {
   IR = 5,
   NFC = 3,
-  SUB_GHZ = 3
+  SUB_GHZ = 4
 };
 
 typedef byte Uid[4];
 typedef byte nfcKey[6];
 
 void __attribute__((noreturn)) halt(void) {
-  while (1);
+  while (1)
+    ;
 }
 
 /*enum class Signal{
@@ -140,33 +140,64 @@ nfcKey commonKeys[] = {
 };
 
 rmt_item32_t slow_blink[] = {
-    // 8 items of pure HIGH (16 phases of 31250us = 500,000us)
-    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
-    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
-    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
-    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
-    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
-    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
-    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
-    {{{ 31250, 1, 31250, 1 }}}, {{{ 31250, 1, 31250, 1 }}},
-    
-    // 8 items of pure LOW
-    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
-    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
-    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
-    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
-    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
-    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
-    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}},
-    {{{ 31250, 0, 31250, 0 }}}, {{{ 31250, 0, 31250, 0 }}}
+  // 8 items of pure HIGH (16 phases of 31250us = 500,000us)
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+  { { { 31250, 1, 31250, 1 } } },
+
+  // 8 items of pure LOW
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } },
+  { { { 31250, 0, 31250, 0 } } }
 };
+
+const rmt_item32_t test_signal[] = {
+  { { { 750, 1, 250, 0 } } },  // Item 0: 500us High, 500us Low
+  { { { 750, 1, 250, 0 } } },  // Item 1: 500us High, 500us Low
+  { { { 750, 1, 250, 0 } } },  // Item 2: 500us High, 500us Low
+  { { { 750, 1, 250, 0 } } },  // Item 3: 500us High, 500us Low
+  { { { 750, 1, 250, 0 } } },  // Item 4: 500us High, 500us Low
+  { { { 750, 1, 250, 0 } } },  // Item 5: 500us High, 500us Low
+  { { { 750, 1, 250, 0 } } },  // Item 6: 500us High, 500us Low
+  { { { 750, 1, 250, 0 } } },  // Item 7: 500us High, 500us Low
+  { { { 750, 1, 250, 0 } } }   // Item 8: 500us High, 500us Low
+};
+
 
 constexpr uint8_t sendPin = 32;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
 constexpr uint8_t recvPin = 35;
 constexpr uint8_t batPin = 36;
 constexpr uint8_t LOOP_TASK_PRIORITY = 1;
 constexpr uint16_t BAT_LVL_PERIOD_MS = 30000;
-constexpr uint8_t MAX_TOKENS = 10;
+constexpr uint8_t MAX_TOKENS = 5;
+constexpr uint16_t MAX_LVL_TIMES = 1000;
+constexpr uint16_t MAX_SUBGHZ_SIGNAL_SIZE = MAX_LVL_TIMES/2;
 constexpr uint8_t MAX_TOKEN_SIZE = 20;
 constexpr uint8_t MSG_MAX_LEN = 100;
 constexpr uint8_t CAP_NUM_TOKENS = 2;
@@ -175,6 +206,7 @@ constexpr uint16_t MAX_ANALOG_VAL = 4095;
 constexpr uint64_t IR_REPEAT_CODE = 0xFFFFFFFFFFFFFFFF;
 constexpr uint8_t MIFARE_CLASSIC_UID_LEN = 4;
 constexpr uint8_t NFC_READ_TIMEOUT_MS = 50;
+constexpr uint16_t MAX_SUBGHZ_DURATION = 32767;
 #if TESTING == 1
 Uid nfcUid = { 0, 1, 2, 3 };
 #elif TESTING == 0
@@ -183,7 +215,8 @@ Uid nfcUid = { 0 };
 uint32_t blockNum = 0;
 uint8_t nfcUidLen;
 decode_results results;
-std::array<String, 10> tokens;
+String tokens[MAX_TOKENS];
+String lvlTimes[MAX_LVL_TIMES];
 //String modeString;
 //String command;
 uint8_t batLvl;
@@ -200,6 +233,8 @@ constexpr uint8_t batMaxPerc = 100;
 
 byte blockData[16] = { 0x01 };
 char msgToSend[MSG_MAX_LEN];
+
+rmt_item32_t signalToSendBuf[MAX_SUBGHZ_SIGNAL_SIZE];
 
 class IRSignal {
 public:
@@ -247,11 +282,11 @@ BTHelper BT;
 State state;
 IRSignal irSignal;
 //Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET, &Wire);
-Adafruit_PN532 nfc(PN532_RESET,&Serial2);
+Adafruit_PN532 nfc(PN532_RESET, &Serial2);
 IRsend irsend(sendPin);  // Set the GPIO to be used to sending the message.
 IRrecv irrecv(recvPin);
 SPIClass hspi(HSPI);
-CC1101 radio = new Module(CS_PIN, IRQ_PIN, RADIOLIB_NC,IRQ2_PIN,hspi);
+CC1101 radio = new Module(CS_PIN, IRQ_PIN, RADIOLIB_NC, IRQ2_PIN, hspi);
 
 Mode determineMode(const String& modeString) {
   Mode mode = Mode::INVALID;
@@ -277,8 +312,8 @@ inline void buildMsg(char* msg, const Uid uid) {
   snprintf(msg, MSG_MAX_LEN, "nfc:%02X%02X%02X%02X", uid[0], uid[1], uid[2], uid[3]);
 }
 
-inline void buildMsg(char* msg, const double frequency) {
-  snprintf(msg, MSG_MAX_LEN, "ghz:%" PRIu32 ":%" PRIu8, (uint32_t)(frequency * 100.0));
+inline void buildMsg(char* msg, const double frequency, const char* code) {
+  snprintf(msg, MSG_MAX_LEN, "ghz:%" PRIu32 ":%s", (uint32_t)(frequency * 100.0), code);
 }
 
 inline void buildMsg(char* msg, size_t msgLen, LogCode code) {
@@ -290,43 +325,62 @@ inline void changeBlockUid(Uid newUid, byte* outBlockData, uint32_t blockNum) {
   outBlockData[4] = calcBCC(newUid);
 }
 
-void printState(const esp_err_t state,const char* msgSuccess,const char* msgFail)
-{
-  if(state==ESP_OK)
-  {
+void printState(const esp_err_t state, const char* msgSuccess, const char* msgFail) {
+  if (state == ESP_OK) {
     Serial.println(msgSuccess);
-  }
-  else
-  {
-    Serial.printf("%s:",msgFail);
+  } else {
+    Serial.printf("%s:", msgFail);
     Serial.println(esp_err_to_name(state));
   }
 }
 
-void init_rmt(void)
-{
+void init_rmt(void) {
   esp_err_t state;
-  constexpr size_t rx_buf_size_in_tx_mode=(size_t)0;
-  constexpr int default_flags=0;
-  rmt_config_t _rmt_config=RMT_DEFAULT_CONFIG_TX((gpio_num_t) IRQ_PIN, RMT_CHANNEL_0);
-  state=rmt_config(&_rmt_config);
-  printState(state,"Config success","Config fail");
-  assert(state==ESP_OK);
-  state=rmt_driver_install(RMT_CHANNEL_0,rx_buf_size_in_tx_mode, default_flags);
-  printState(state,"driver install success","driver install fail");
-  assert(state==ESP_OK);
-
+  constexpr size_t rx_buf_size_in_tx_mode = (size_t)0;
+  constexpr int default_flags = 0;
+  rmt_config_t _rmt_config = RMT_DEFAULT_CONFIG_TX((gpio_num_t)IRQ_PIN, RMT_CHANNEL_0);
+  state = rmt_config(&_rmt_config);
+  printState(state, "Config success", "Config fail");
+  assert(state == ESP_OK);
+  state = rmt_driver_install(RMT_CHANNEL_0, rx_buf_size_in_tx_mode, default_flags);
+  printState(state, "driver install success", "driver install fail");
+  assert(state == ESP_OK);
 }
 
-uint8_t stringSplit(String str, const String delimiter, std::array<String, 10>& tokens) {
+void initSubghzSignalBuf(rmt_item32_t* signalToSendBuf)
+{
+  for (uint16_t i=0;i<MAX_SUBGHZ_SIGNAL_SIZE;i++)
+  {
+    signalToSendBuf[i].level0=1;
+    signalToSendBuf[i].level1=0;
+  }
+}
+
+bool fillSubghzSignalBuf(rmt_item32_t* signalToSendBuf,uint16_t signalSize,String* lvlTimes)
+{
+  for (uint16_t i=0,j=0;i<signalSize;i++,j+=2)
+  {
+    int dur0=atoi(lvlTimes[j].c_str());
+    if(dur0>(int)MAX_SUBGHZ_DURATION || dur0<=0)
+      return false;
+    signalToSendBuf[i].duration0=dur0;
+    int dur1=atoi(lvlTimes[j+1].c_str());
+    if(dur1>(int)MAX_SUBGHZ_DURATION || dur1<=0)
+      return false;
+    signalToSendBuf[i].duration1=dur1;
+  }
+  return true;
+}
+
+uint16_t stringSplit(String str, const String delimiter,String* tokens,uint16_t maxTokens) {
   int16_t index;
   uint8_t i = 0;
-  while ((index = str.indexOf(delimiter)) != -1 && i < MAX_TOKENS) {
+  while ((index = str.indexOf(delimiter)) != -1 && i < maxTokens) {
     tokens[i] = str.substring(0, index);
     str = str.substring(index + delimiter.length());
     i++;
   }
-  if (i < MAX_TOKENS)
+  if (i < maxTokens)
     tokens[i] = str;
   return i + 1;
 }
@@ -358,20 +412,19 @@ inline byte calcBCC(Uid uid) {
   return BCC;
 }
 
-bool nfcBruteForceAuth(Uid uid, uint32_t blockNum,bool& cancelled) {
-  cancelled=false;
+bool nfcBruteForceAuth(Uid uid, uint32_t blockNum, bool& cancelled) {
+  cancelled = false;
   bool success = false;
   bool isKeyB = false;
   constexpr uint8_t commonKeysSize = sizeof(commonKeys) / sizeof(commonKeys[0]);
   for (uint8_t i = 0; i < 2; i++) {
     for (uint8_t j = 0; j < commonKeysSize; j++) {
-      Serial.printf("Trying key %hhu...\n",j);
+      Serial.printf("Trying key %hhu...\n", j);
       success = nfc.mifareclassic_AuthenticateBlock(uid, MIFARE_CLASSIC_UID_LEN, blockNum, isKeyB, (byte*)commonKeys[j]);
       if (success)
         return true;
-      if(BT.available() && BT.read()=='c')
-      {
-        cancelled=true;
+      if (BT.available() && BT.read() == 'c') {
+        cancelled = true;
         return false;
       }
     }
@@ -427,7 +480,8 @@ void setup() {
   irsend.begin();
   irrecv.pause();
   Serial2.begin(115200, SERIAL_8N1, 16, 17);
-  while(!Serial2);
+  while (!Serial2)
+    ;
   nfc.begin();
   uint32_t versiondata = nfc.getFirmwareVersion();
   if (!versiondata) {
@@ -435,27 +489,24 @@ void setup() {
     //halt();
   } else
     printPN532Version(versiondata);
-    hspi.begin();
-  int status=radio.begin();
-  if(status==RADIOLIB_ERR_NONE)
-  {
+  hspi.begin();
+  int status = radio.begin();
+  if (status == RADIOLIB_ERR_NONE) {
     Serial.println(F("CC1101 init success"));
     Serial.print("Freq err code:");
-    Serial.println(radio.setFrequency(433.92)); // Change to 315.0 if in the US/China
+    Serial.println(radio.setFrequency(433.92));  // Change to 315.0 if in the US/China
     Serial.print("Mod err code:");
     Serial.println(radio.setOOK(true));
   }
-  status=radio.transmitDirectAsync();
-  if(status==RADIOLIB_ERR_NONE)
-  {
+  status = radio.transmitDirectAsync();
+  if (status == RADIOLIB_ERR_NONE) {
     Serial.println(F("CC1101 transmit mode set!"));
-  }
-  else 
-  {
+  } else {
     Serial.print(F("CC1101 transmit mode set failed:"));
     Serial.println(status);
   }
-    init_rmt();
+  init_rmt();
+  initSubghzSignalBuf(signalToSendBuf);
   TimerHandle_t batteryTimer = xTimerCreate("Battery", pdMS_TO_TICKS(BAT_LVL_PERIOD_MS), pdTRUE, 0, batteryTimerCallback);
   xTimerStart(batteryTimer, 0);
 }
@@ -471,7 +522,7 @@ beginning:
     if (recdMsg == "bat") {
       getAndSendBatLvl();
       //goto beginning;
-    } else if ((tokenNum = stringSplit(recdMsg, ":", tokens)) < 2) {
+    } else if ((tokenNum = stringSplit(recdMsg, ":", tokens,MAX_TOKENS)) < 2) {
       Serial.println(F("Wrong format, try again!"));
       //BT.write("dbg:Wrong message format");
       BT.empty();
@@ -497,7 +548,7 @@ beginning:
                 irrecv.resume();  // Receive the next value
                 Serial.println(F("Capturing the ir signal..."));
                 BT.log(LogCode::IR_CAP_START);
-                again:
+again:
                 while (!irrecv.decode(&results)) {
                   if (BT.available() && BT.read() == 'c') {
                     BT.empty();
@@ -526,10 +577,6 @@ beginning:
               {
                 Serial.println(F("Capturing the nfc signal..."));
                 BT.log(LogCode::NFC_UID_READ_START);
-                #if TESTING == 1
-                buildMsg(msgToSend, nfcUid);
-                BT.write(msgToSend);
-                #endif
                 bool reading = true;
                 while (reading) {
                   bool uidReadSuccess = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, nfcUid, &nfcUidLen, NFC_READ_TIMEOUT_MS);
@@ -558,10 +605,10 @@ beginning:
               {
                 Serial.println(F("Capturing the sub ghz signal..."));
                 BT.log(LogCode::SUBGHZ_CAP_START);
-                #if TESTING == 1
-                buildMsg(msgToSend, 433.92);
+#if TESTING == 1
+                buildMsg(msgToSend, 433.92, "120_250_250_250");
                 BT.write(msgToSend);
-                #endif
+#endif
                 //logic here
                 break;
               }
@@ -585,8 +632,8 @@ beginning:
                 bool isNfcCodeValid = hexStrToUid(tokens[2], nfcUid);
                 Uid dummyUid;
                 uint8_t dummyUidLen;
-                for(uint8_t i=0;i<MIFARE_CLASSIC_UID_LEN;i++)
-                  Serial.print(nfcUid[i],HEX);
+                for (uint8_t i = 0; i < MIFARE_CLASSIC_UID_LEN; i++)
+                  Serial.print(nfcUid[i], HEX);
                 Serial.println();
                 if (!isNfcCodeValid) {
                   Serial.println(F("Invalid NFC code"));
@@ -594,32 +641,26 @@ beginning:
                   break;
                 }
                 BT.log(LogCode::NFC_WRITE_START);
-                uint64_t startTime=millis();
-                bool targetInlisted=false;
-                while(!(targetInlisted=nfc.readPassiveTargetID(0, dummyUid, &dummyUidLen,100U)))
-                {
-                  if(BT.available() && BT.read()=='c')
+                uint64_t startTime = millis();
+                bool targetInlisted = false;
+                while (!(targetInlisted = nfc.readPassiveTargetID(0, dummyUid, &dummyUidLen, 100U))) {
+                  if (BT.available() && BT.read() == 'c')
                     break;
                 }
-                if(!targetInlisted)
-                {
+                if (!targetInlisted) {
                   Serial.println(F("NFC writing cancelled"));
                   BT.log(LogCode::NFC_WRITE_CANCEL);
                   nfc.SAMConfig();
                   break;
-                }
-                else{
+                } else {
                   Serial.println("Target inlisted!");
                 }
                 bool authCancelled;
-                if (!nfcBruteForceAuth(dummyUid, blockNum,authCancelled)) {
-                  if(authCancelled)
-                  {
+                if (!nfcBruteForceAuth(dummyUid, blockNum, authCancelled)) {
+                  if (authCancelled) {
                     Serial.println(F("NFC write cancelled"));
                     BT.log(LogCode::NFC_WRITE_CANCEL);
-                  }
-                  else
-                  {
+                  } else {
                     Serial.println(F("NFC auth failure"));
                     BT.log(LogCode::NFC_AUTH_FAIL);
                   }
@@ -648,11 +689,25 @@ beginning:
               }
             case Mode::SUB_GHZ:
               {
+#if TESTING == 0
                 radio.setFrequency(atof(tokens[2].c_str()));
-                Serial.println(F("Sent the sub ghz signal"));
-                esp_err_t state=rmt_write_items(RMT_CHANNEL_0,slow_blink,(sizeof(slow_blink)/sizeof(rmt_item32_t)),true);
-                printState(state,"Transmit success","Transmit failed");
-                if(state==ESP_OK)
+                uint16_t lvlTimesSize=stringSplit(tokens[3],"_",lvlTimes,MAX_LVL_TIMES);
+                uint16_t signalSize=lvlTimesSize/2;
+                bool success=fillSubghzSignalBuf(signalToSendBuf,signalSize,lvlTimes);
+                for(int i=0;i<signalSize;i++)
+                {
+                  Serial.printf("%d:%d %d:%d\n",signalToSendBuf[i].level0, signalToSendBuf[i].duration0, signalToSendBuf[i].level1, signalToSendBuf[i].duration1);
+                }
+                esp_err_t state;
+                if(success)
+                  state = rmt_write_items(RMT_CHANNEL_0, signalToSendBuf, (int)(signalSize), true);
+                else
+                  state = ESP_FAIL;
+#else
+                esp_err_t state = rmt_write_items(RMT_CHANNEL_0, test_signal,(int)(sizeof(test_signal)/sizeof(test_signal[0])), true);
+#endif
+                printState(state, "Transmit success", "Transmit failed");
+                if (state == ESP_OK)
                   BT.log(LogCode::SUBGHZ_SEND_SUCCESS);
                 else
                   BT.log(LogCode::SUBGHZ_SEND_FAIL);
