@@ -10,15 +10,17 @@
 #include <RadioLib.h>
 #include "driver/rmt.h"
 #include "esp_err.h"
+//#include "soc/soc.h"
+//#include "soc/rtc_cntl_reg.h"
 //#include <ctype.h>
 
 #define PN532_RESET (2)  //was 3
 #define ASSERT_BOUNDS(INDEX, SIZE) \
   if (INDEX < 0 || INDEX >= SIZE) return false;
 #define skip() goto beginning
-#define CS_PIN 15
-#define IRQ_PIN 26
-#define IRQ2_PIN 27
+#define CS_PIN 27
+#define IRQ_PIN 18
+#define IRQ2_PIN 19
 #define TESTING 0
 
 enum class LogCode : uint8_t {
@@ -191,8 +193,10 @@ const rmt_item32_t test_signal[] = {
 
 
 constexpr uint8_t sendPin = 32;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
-constexpr uint8_t recvPin = 35;
-constexpr uint8_t batPin = 36;
+constexpr uint8_t recvPin = 34;
+constexpr uint8_t batPin = 35;
+constexpr uint8_t rx2_pin = 16;
+constexpr uint8_t tx2_pin = 17;
 constexpr uint8_t LOOP_TASK_PRIORITY = 1;
 constexpr uint16_t BAT_LVL_PERIOD_MS = 30000;
 constexpr uint8_t MAX_TOKENS = 5;
@@ -203,17 +207,12 @@ constexpr uint8_t MAX_TOKEN_SIZE = 20;
 constexpr uint8_t MSG_MAX_LEN = 100;
 constexpr uint8_t CAP_NUM_TOKENS = 2;
 constexpr uint8_t REP_NUM_TOKENS = 5;
-constexpr uint16_t MAX_ANALOG_VAL = 4095;
 constexpr uint64_t IR_REPEAT_CODE = 0xFFFFFFFFFFFFFFFF;
 constexpr uint8_t MIFARE_CLASSIC_UID_LEN = 4;
 constexpr uint8_t NFC_READ_TIMEOUT_MS = 50;
 constexpr uint16_t MAX_SUBGHZ_DURATION = 32767;
-#if TESTING == 1
-Uid nfcUid = { 0, 1, 2, 3 };
-#elif TESTING == 0
-Uid nfcUid = { 0 };
-#endif
 uint32_t blockNum = 0;
+Uid nfcUid;
 uint8_t nfcUidLen;
 decode_results results;
 String tokens[MAX_TOKENS];
@@ -226,7 +225,7 @@ uint8_t tokenNum = 0;
 constexpr uint16_t adcMax = 4095;
 constexpr float fullBatVScaled = 2.1f;
 constexpr float emptyBatVScaled = 1.5f;
-constexpr float adcRefV = 3.3f;
+constexpr float adcRefV = 3.1f;
 constexpr uint16_t batAdcMax = adcMax * (fullBatVScaled / adcRefV);
 constexpr uint16_t batAdcMin = adcMax * (emptyBatVScaled / adcRefV);
 constexpr uint8_t batMinPerc = 0;
@@ -416,9 +415,23 @@ inline uint8_t getBatLvl(const uint16_t analogVal) {
   return map(analogVal, batAdcMin, batAdcMax, batMinPerc, batMaxPerc);
 }
 
+uint16_t getBlockAverage(uint8_t pin, uint8_t samples = 10) {
+  uint32_t sum = 0;
+  for (uint8_t i = 0; i < samples; i++) {
+    sum += analogRead(pin);
+    delay(1); // Small delay to let the ADC sample-and-hold capacitor stabilize
+  }
+  return sum / samples;
+}
+
+inline uint8_t approx(uint8_t val,uint8_t step)
+{
+  return (val/step*step);
+}
+
 void getAndSendBatLvl() {
   char msgToSend[MSG_MAX_LEN];
-  uint8_t batLvl = getBatLvl(analogRead(batPin));
+  uint8_t batLvl = approx(getBatLvl(getBlockAverage(batPin)),5);//getBatLvl(analogRead(batPin));
   buildMsg(msgToSend, batLvl);
   BT.write(msgToSend);
 }
@@ -500,15 +513,15 @@ void printPN532Version(uint32_t versiondata) {
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  pinMode(batPin,INPUT);
   BT.begin("Pwny");
   BT.enableSSP();
   BT.setTimeout(1500);
   irrecv.enableIRIn();  // Start the receiver
   irsend.begin();
   irrecv.pause();
-  Serial2.begin(115200, SERIAL_8N1, 16, 17);
-  while (!Serial2)
-    ;
+  Serial2.begin(115200, SERIAL_8N1, rx2_pin, tx2_pin);
+  while (!Serial2);
   nfc.begin();
   uint32_t versiondata = nfc.getFirmwareVersion();
   if (!versiondata) {
@@ -532,8 +545,13 @@ void setup() {
     Serial.print(F("CC1101 transmit mode set failed:"));
     Serial.println(status);
   }
+  
   init_rmt();
   initSubghzSignalBuf(signalToSendBuf);
+  // Set ADC resolution to 12-bit (0 to 4095)
+  analogReadResolution(12); 
+  // Set attenuation to 11 dB (expands full-scale range up to ~3.1V)
+  analogSetAttenuation(ADC_11db);
   TimerHandle_t batteryTimer = xTimerCreate("Battery", pdMS_TO_TICKS(BAT_LVL_PERIOD_MS), pdTRUE, 0, batteryTimerCallback);
   xTimerStart(batteryTimer, 0);
   subghzSignalStr.reserve(MAX_SUBGHZ_SIGNAL_STR_SIZE);
@@ -541,6 +559,7 @@ void setup() {
 
 void loop() {
 // put your main code here, to run repeatedly:
+  //Serial.printf("min:%u,max:%u,current:%u\n",batAdcMin,batAdcMax,analogRead(batPin));
 beginning:
   if (BT.available()) {
     //BT.readString().toCharArray(msg,MSG_MAX_LEN);
@@ -633,18 +652,13 @@ again:
               {
                 Serial.println(F("Capturing the sub ghz signal..."));
                 BT.log(LogCode::SUBGHZ_CAP_START);
-#if TESTING == 1
-                buildMsg(msgToSend, 433.92, "120_250_250_250");
-                BT.write(msgToSend);
-#else
-                uint16_t signalSize;
-                if(fillSubhzSignalStr(subghzSignalStr, MAX_SUBGHZ_SIGNAL_STR_SIZE, signalToSendBuf, signalSize))
+                uint16_t signalSize = (sizeof(test_signal) / sizeof(test_signal[0]));
+                if(fillSubhzSignalStr(subghzSignalStr, MAX_SUBGHZ_SIGNAL_STR_SIZE, (rmt_item32_t*)test_signal, signalSize))
                 {
                   buildMsg(msgToSend,atof(tokens[2].c_str()),subghzSignalStr.c_str());
                   BT.write(msgToSend);
                 }
-#endif
-                //logic here
+
                 break;
               }
           }
@@ -723,31 +737,27 @@ again:
                 break;
               }
             case Mode::SUB_GHZ:
+            {
+              radio.setFrequency(atof(tokens[2].c_str()));
+              uint16_t lvlTimesSize=stringSplit(tokens[3],"_",lvlTimes,MAX_LVL_TIMES);
+              uint16_t signalSize=lvlTimesSize/2;
+              bool success=fillSubghzSignalBuf(signalToSendBuf,signalSize,lvlTimes);
+              for(int i=0;i<signalSize;i++)
               {
-#if TESTING == 0
-                radio.setFrequency(atof(tokens[2].c_str()));
-                uint16_t lvlTimesSize=stringSplit(tokens[3],"_",lvlTimes,MAX_LVL_TIMES);
-                uint16_t signalSize=lvlTimesSize/2;
-                bool success=fillSubghzSignalBuf(signalToSendBuf,signalSize,lvlTimes);
-                for(int i=0;i<signalSize;i++)
-                {
-                  Serial.printf("%d:%d %d:%d\n",signalToSendBuf[i].level0, signalToSendBuf[i].duration0, signalToSendBuf[i].level1, signalToSendBuf[i].duration1);
-                }
-                esp_err_t state;
-                if(success)
-                  state = rmt_write_items(RMT_CHANNEL_0, signalToSendBuf, (int)(signalSize), true);
-                else
-                  state = ESP_FAIL;
-#else
-                esp_err_t state = rmt_write_items(RMT_CHANNEL_0, test_signal,(int)(sizeof(test_signal)/sizeof(test_signal[0])), true);
-#endif
-                printState(state, "Transmit success", "Transmit failed");
-                if (state == ESP_OK)
-                  BT.log(LogCode::SUBGHZ_SEND_SUCCESS);
-                else
-                  BT.log(LogCode::SUBGHZ_SEND_FAIL);
-                break;
+                Serial.printf("%d:%d %d:%d\n",signalToSendBuf[i].level0, signalToSendBuf[i].duration0, signalToSendBuf[i].level1, signalToSendBuf[i].duration1);
               }
+              esp_err_t state;
+              if(success)
+                state = rmt_write_items(RMT_CHANNEL_0, signalToSendBuf, (int)(signalSize), true);
+              else
+                state = ESP_FAIL;
+              printState(state, "Transmit success", "Transmit failed");
+              if (state == ESP_OK)
+                BT.log(LogCode::SUBGHZ_SEND_SUCCESS);
+              else
+                BT.log(LogCode::SUBGHZ_SEND_FAIL);
+              break;
+            }
           }
           break;
         case State::UNREC:
@@ -757,6 +767,6 @@ again:
           break;
       }
     }
-    //emptyBTBuf();
+    //BT.empty();
   }
 }
