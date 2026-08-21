@@ -222,12 +222,8 @@ String lvlTimes[MAX_LVL_TIMES];
 uint8_t batLvl;
 unsigned long lastRecordedTime = 0;
 uint8_t tokenNum = 0;
-constexpr uint16_t adcMax = 4095;
-constexpr float fullBatVScaled = 2.1f;
-constexpr float emptyBatVScaled = 1.5f;
-constexpr float adcRefV = 3.1f;
-constexpr uint16_t batAdcMax = adcMax * (fullBatVScaled / adcRefV);
-constexpr uint16_t batAdcMin = adcMax * (emptyBatVScaled / adcRefV);
+constexpr uint16_t batAdcMaxMV = 2050;
+constexpr uint16_t batAdcMinMV = 1600;
 constexpr uint8_t batMinPerc = 0;
 constexpr uint8_t batMaxPerc = 100;
 
@@ -411,27 +407,30 @@ uint16_t stringSplit(String str, const String delimiter,String* tokens,uint16_t 
   return i + 1;
 }
 
-inline uint8_t getBatLvl(const uint16_t analogVal) {
-  return map(analogVal, batAdcMin, batAdcMax, batMinPerc, batMaxPerc);
+inline uint8_t getBatLvl(uint16_t analogVal) {
+  analogVal = constrain(analogVal,batAdcMinMV,batAdcMaxMV);
+  return map(analogVal, batAdcMinMV, batAdcMaxMV, batMinPerc, batMaxPerc);
 }
 
-uint16_t getBlockAverage(uint8_t pin, uint8_t samples = 10) {
+uint16_t getBlockAverage(uint8_t pin, uint8_t samples = 5) {
   uint32_t sum = 0;
   for (uint8_t i = 0; i < samples; i++) {
-    sum += analogRead(pin);
-    delay(1); // Small delay to let the ADC sample-and-hold capacitor stabilize
+    sum += analogReadMilliVolts(pin);
+    ets_delay_us(50); // Small delay to let the ADC sample-and-hold capacitor stabilize
   }
-  return sum / samples;
+  uint16_t batAvg = sum / samples;
+  return batAvg;
 }
 
-inline uint8_t approx(uint8_t val,uint8_t step)
+inline uint8_t approx(uint8_t val,uint8_t step = 5)
 {
-  return (val/step*step);
+  return ( (val+step/2)/step*step );
 }
 
 void getAndSendBatLvl() {
   char msgToSend[MSG_MAX_LEN];
-  uint8_t batLvl = approx(getBatLvl(getBlockAverage(batPin)),5);//getBatLvl(analogRead(batPin));
+  uint8_t batLvl = approx( getBatLvl (getBlockAverage(batPin) ) );
+  Serial.printf("bat lvl:%hhu",batLvl);
   buildMsg(msgToSend, batLvl);
   BT.write(msgToSend);
 }
