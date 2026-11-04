@@ -598,7 +598,6 @@ again:
                 while (!irrecv.decode(&results)) {
                   if (BT.available() && BT.read() == 'c') {
                     BT.empty();
-                    //BT.write("dbg:Cancelled IR capture");
                     BT.log(LogCode::IR_CAP_CANCEL);
                     goto beginning;
                   }
@@ -648,18 +647,19 @@ again:
                 break;
               }
             case Mode::SUB_GHZ:
+            {
+              Serial.println(F("Capturing the sub ghz signal..."));
+              BT.log(LogCode::SUBGHZ_CAP_START);
+              delay(5000);
+              uint16_t signalSize = (sizeof(test_signal) / sizeof(test_signal[0]));
+              if(fillSubhzSignalStr(subghzSignalStr, MAX_SUBGHZ_SIGNAL_STR_SIZE, (rmt_item32_t*)test_signal, signalSize))
               {
-                Serial.println(F("Capturing the sub ghz signal..."));
-                BT.log(LogCode::SUBGHZ_CAP_START);
-                uint16_t signalSize = (sizeof(test_signal) / sizeof(test_signal[0]));
-                if(fillSubhzSignalStr(subghzSignalStr, MAX_SUBGHZ_SIGNAL_STR_SIZE, (rmt_item32_t*)test_signal, signalSize))
-                {
-                  buildMsg(msgToSend,atof(tokens[2].c_str()),subghzSignalStr.c_str());
-                  BT.write(msgToSend);
-                }
-
-                break;
+                buildMsg(msgToSend,atof(tokens[2].c_str()),subghzSignalStr.c_str());
+                BT.write(msgToSend);
+                BT.log(LogCode::SUBGHZ_CAP_SUCCESS);
               }
+              break;
+            }
           }
           break;
         case State::REPLAY:
