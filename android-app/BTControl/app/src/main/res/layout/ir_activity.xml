@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/Signals"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="16dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/BTStatusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Status: Disconnected"
+                android:textColor="#D32F2F"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/BatteryLevelText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/dark_red"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/Title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Signals"
+            android:textColor="#000000"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+    </FrameLayout>
+
+    <Spinner
+        android:id="@+id/SignalTypeSpinner"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"></Spinner>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:text="Name:"
+            android:textColor="#000000" />
+
+        <EditText
+            android:id="@+id/NameEdit"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Enter signal name"
+            android:minHeight="48dp"
+            android:padding="8dp"
+            android:textColor="#000000"
+            android:textColorHint="#757575" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:gravity="center_horizontal"
+        android:orientation="horizontal"
+        android:weightSum="2">
+
+        <!--<Button
+            android:id="@+id/AddButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:backgroundTint="@color/widgetColor"
+            android:text="Add signal"
+            android:textColor="@color/white" />
+        -->
+        <Button
+            android:id="@+id/SearchButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:backgroundTint="@color/widgetColor"
+            android:text="Search signal"
+            android:textColor="@color/white" />
+    </LinearLayout>
+
+    <ListView
+        android:id="@+id/ListView"
+        android:listSelector="@drawable/list_item_selector"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:cacheColorHint="#FFFFFF"
+        android:divider="#CCCCCC"
+        android:dividerHeight="1dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="8dp"
+        android:paddingBottom="16dp">
+
+        <Button
+            android:id="@+id/CapButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:backgroundTint="@color/widgetColor"
+            android:text="Capture signal"
+            android:textColor="@color/white" />
+
+        <Button
+            android:id="@+id/SendButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:backgroundTint="@color/widgetColor"
+            android:text="Send signal"
+            android:textColor="@color/white" />
+    </LinearLayout>
+</LinearLayout>
